@@ -1,0 +1,6 @@
+### Step 2: Binomial Logistic Regression ###
+# RMSE & MAE < for the dataset with random forest imputation so myelomaRF dataset will be used
+View(myelomaRF)
+colnames(myelomaRF)
+binomial_model_RF <- glm(FRAIL_STAT ~ GENDER + AGE + DEPRIVATION + ETHNIC, data = myelomaRF, family = "binomial")
+summary(binomial_model_RF)
