@@ -1,0 +1,122 @@
+### DATA PRE-PROCESSING (1) ###
+### Step 1: Data Merging & Variable Selection ###
+# set working directory
+setwd("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/5. Final/Coding")
+
+# importing dataset
+patient <- read.csv("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/3. Simulacrum/simulacrum_v2.1.0/simulacrum_v2.1.0/Data/sim_av_patient.csv")
+tumour <- read.csv("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/3. Simulacrum/simulacrum_v2.1.0/simulacrum_v2.1.0/Data/sim_av_tumour.csv")
+
+# extracting summary details for both datasets
+summary(patient)
+summary(tumour)
+
+# load library for merging process
+library(dplyr)
+
+# merge using inner_join
+combineData <- patient %>% inner_join(tumour, by = "PATIENTID", multiple = "all")
+View(combineData)
+ncol(combineData)
+nrow(combineData)
+
+# selecting only the column that going to be use for survival analysis, binary logistic regression and random forest ML
+combineDataFilter <- combineData[, c("PATIENTID", 
+                                     "GENDER.x", 
+                                     "ETHNICITY", 
+                                     "VITALSTATUS", 
+                                     "VITALSTATUSDATE", 
+                                     "DIAGNOSISDATEBEST", 
+                                     "SITE_ICD10_O2_3CHAR",
+                                     "AGE", 
+                                     "QUINTILE_2019", 
+                                     "PERFORMANCESTATUS", 
+                                     "CHRL_TOT_27_03")]
+View(combineDataFilter)
+nrow(combineDataFilter)
+
+### Step 2: Data Filtering ###
+# take in patients who are alive (A) and dead (D) only
+combineDataStatus <- subset(combineDataFilter, VITALSTATUS %in% c("A", "D"))
+View(combineDataStatus)
+nrow(combineDataStatus)
+
+# take in myeloma/multiple myeloma patients only
+myelomaData <- subset(combineDataStatus, SITE_ICD10_O2_3CHAR %in% c("C90"))
+View(myelomaData)
+nrow(myelomaData)
+
+### Step 3: Variables for KM Survival Analysis ###
+# to find the earliest and latest diagnosis date and status date
+# to convert DIAGNOSISDATEBEST and VITALSTATUSDATE to Date type
+myelomaData$VITALSTATUSDATE <- as.Date(myelomaData$VITALSTATUSDATE)
+myelomaData$DIAGNOSISDATEBEST <- as.Date(myelomaData$DIAGNOSISDATEBEST)
+
+# to filter data based on Status "Dead"
+dead_data <- myelomaData[myelomaData$VITALSTATUS == "D", ]
+alive_data <- myelomaData[myelomaData$VITALSTATUS == "A", ]
+
+# to find the latest and earliest dates for dead patient
+max(dead_data$VITALSTATUSDATE, na.rm = TRUE)
+min(dead_data$VITALSTATUSDATE, na.rm = TRUE)
+max(dead_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+min(dead_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+
+# to find the latest and earliest dates for alive patient
+max(alive_data$VITALSTATUSDATE, na.rm = TRUE)
+min(alive_data$VITALSTATUSDATE, na.rm = TRUE)
+max(alive_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+min(alive_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+
+# to create new column to state the status of the patient as of the endpoint choosen is 10 November 2022
+# set the endpoint date
+endpoint_date <- as.Date("2022-11-10")
+
+# to create a new column "Status" based on the specified criteria
+myelomaData$STATUS <- ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "A", "A",
+                           ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "A", "A",
+                                  ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "D", "A",
+                                         ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "D", "D",
+                                                ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "D", "D",
+                                                       ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "A", "A", NA)
+                                                )
+                                         )
+                                  )
+                           )
+)
+
+# view the updated data frame
+View(myelomaData)
+unique(myelomaData$Status)
+
+# to create new column to state the participation period ("Time") of the patient as of the endpoint choosen is 10 November 2022
+# to create a new column "Time" based on the specified criteria
+myelomaData$TIME <- ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "A",
+                           as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                           ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "A",
+                                  as.numeric(difftime(endpoint_date, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                  ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "D",
+                                         as.numeric(difftime(endpoint_date, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                         ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "D",
+                                                as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "D",
+                                                       as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                       ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "A",
+                                                              as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                              NA
+                                                       )
+                                                )
+                                         )
+                                  )
+                           )
+)
+
+# to view the updated data frame
+View(myelomaData)
+
+# to round up the value in time column to 2 decimal places
+myelomaData$TIME <- round(myelomaData$TIME, digits = 2)
+View(myelomaData)
+
+# to save myelomaData as csv file
+write.csv(myelomaData, file = "C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/5. Final/Data/01.myelomaData.csv", row.names = FALSE)
