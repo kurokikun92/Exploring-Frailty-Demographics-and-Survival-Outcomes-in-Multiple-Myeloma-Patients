@@ -1,0 +1,37 @@
+### Step 3: Kaplan-Meier Survival Analysis ###
+library(survival)
+
+# fit the KM model for the data based on frailty status 
+km.model.overall <- survfit(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ 1,
+                       type = "kaplan-meier")
+ 
+# plot the overall KM survival model
+plot(km.model.overall, conf.int=F, xlab="Time (years)", 
+     ylab="% Alive = S(t)", main = "Kaplan-Meier model for Myeloma Patients", mark.time=TRUE)
+
+summary(km.model.overall)
+km.model.overall
+
+# fit the KM model for the data based on frailty status 
+km.model.RF <- survfit(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ myelomaRF$FRAIL_STAT,
+                       type = "kaplan-meier")
+
+# plot the KM survival model for frail and non-frail patient
+plot(km.model.RF, conf.int=F, xlab="Time (years)", 
+     ylab="% Alive = S(t)", main = "Kaplan-Meier model for Myeloma Patients",
+     col=c("blue", "red"), las=1, lwd=2, mark.time=TRUE)
+
+# to add legend to the plot
+legend(x= "topright", legend=c("Nonfrail", "Frail"), lty=1, lwd=2,
+       col = c("blue", "red"), bty="", cex = 0.6)
+
+summary(km.model.RF)
+km.model.RF
+
+# perform the log-rank test to identify if there is any statistical difference between frail and non frail
+logrank_test <- survdiff(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ myelomaRF$FRAIL_STAT, data = myelomaRF)
+
+# print the log-rank test results
+print(logrank_test)
+
+
