@@ -1,0 +1,32 @@
+### DATA PRE-PROCESSING (2)###
+# Frailty Score for random forest imputation
+# define scoring rule
+# score for Age
+age_score <- ifelse(myelomaDataImputedRF$AGE <= 75, 0,
+                    ifelse(myelomaDataImputedRF$AGE <= 80, 1, 2))
+
+# score for Charlson Comorbidity Index
+comorbidity_score <- ifelse(myelomaDataImputedRF$CCS <= 1, 0, 1)
+
+# score for Performance Status
+performance_score <- ifelse(myelomaDataImputedRF$PERFORMANCE == 0, 0,
+                            ifelse(myelomaDataImputedRF$PERFORMANCE == 1, 1, 2))
+
+# calculate total frailty score
+FRAILTY_SCORE <- age_score + comorbidity_score + performance_score
+
+# determine frailty status
+FRAILTY_STATUS <- ifelse(FRAILTY_SCORE >= 2, "Frail", "Nonfrail")
+
+# creating column to reflect the total frailty score
+myelomaDataImputedRF <- myelomaDataImputedRF %>%
+  mutate(FRAILTY_SCORE)
+
+# creating column to reflect the frailty status
+myelomaDataImputedRF <- myelomaDataImputedRF %>%
+  mutate(FRAILTY_STATUS)
+View(myelomaDataImputedRF)
+
+unique(myelomaDataImputedRF$PERFORMANCE)
+unique(myelomaDataImputedRF$CCS)
+unique(myelomaDataImputedRF$ETHNIC)
