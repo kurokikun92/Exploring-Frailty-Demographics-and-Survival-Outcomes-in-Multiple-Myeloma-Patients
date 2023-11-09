@@ -1,0 +1,32 @@
+### EXPLORATORY DATA ANALYSIS (EDA) ###
+# to reflect the number of missing value in each column
+colSums(is.na(myelomaData))
+
+# to calculate the number of missing values in the "ETHNICITY", "PERFORMANCESTATUS", and "CHRL_TOT_27_03"  column
+sum(is.na(myelomaData$ETHNICITY))
+myelomaData %>%
+  count(ETHNICITY, name = "Counts", sort = TRUE)
+
+sum(is.na(myelomaData$PERFORMANCESTATUS))
+myelomaData %>%
+  count(PERFORMANCESTATUS, name = "Counts", sort = TRUE)
+
+sum(is.na(myelomaData$CHRL_TOT_27_03))
+myelomaData %>%
+  count(CHRL_TOT_27_03, name = "Counts", sort = TRUE)
+
+# from Python there is missing value found in ETHNICITY column but there is none can be found in R
+# the check the unique value in ETHNICITY column
+unique(myelomaData$ETHNICITY)
+
+# from the output we found that the missing value are represented by whitespace and below code was run to properly identify the white space
+library(stringr)
+sum(is.na(myelomaData$ETHNICITY) | str_trim(myelomaData$ETHNICITY) == "")
+myelomaData$ETHNICITY[myelomaData$ETHNICITY == ""] <- NA
+summary(myelomaData)
+
+# to replace the whitespace with NA
+library(stringr)
+myelomaData$ETHNICITY <- ifelse(str_trim(myelomaData$ETHNICITY) == "", NA, myelomaData$ETHNICITY)
+myelomaData %>%
+  count(ETHNICITY, name = "Counts", sort = TRUE)
