@@ -1,0 +1,180 @@
+### DATA CLEANING ###
+### Step 1: Standardization of Data ###
+# to rename a column using colnames() function
+colnames(myelomaData)[colnames(myelomaData) == "GENDER.x"] <- "GENDER"
+colnames(myelomaData)[colnames(myelomaData) == "QUINTILE_2019"] <- "DEPRIVATION"
+colnames(myelomaData)[colnames(myelomaData) == "PERFORMANCESTATUS"] <- "PERFORMANCE"
+colnames(myelomaData)[colnames(myelomaData) == "CHRL_TOT_27_03"] <- "CCS"
+View(myelomaData)
+
+# to check uniqueness of value for each variables
+unique(myelomaData$GENDER)
+unique(myelomaData$ETHNICITY)
+unique(myelomaData$VITALSTATUS)
+unique(myelomaData$SITE_ICD10_O2_3CHAR)
+unique(myelomaData$DEPRIVATION)
+unique(myelomaData$PERFORMANCE)
+unique(myelomaData$CCS)
+
+# to create new column to group the ethnic
+myelomaData <- myelomaData %>%
+  mutate(ETHNIC = case_when(
+    ETHNICITY %in% c("A", "B", "C", "0") ~ "1",
+    ETHNICITY %in% c("H", "J", "K") ~ "2",
+    ETHNICITY %in% c("M", "N", "P") ~ "3",
+    ETHNICITY %in% c("D", "E", "F", "G") ~ "4",
+    ETHNICITY %in% c("L", "R", "S") ~ "5",
+    ETHNICITY %in% c("X", "Z", NA) ~ NA,
+    TRUE ~ ETHNICITY  # Keep other values unchanged
+  ))
+unique(myelomaData$ETHNIC)
+
+# replacing value in DEPRIVATION column
+unique(myelomaData$DEPRIVATION)
+myelomaData <- myelomaData %>%
+  mutate(
+    DEPRIVATION = case_when(
+      DEPRIVATION == "5 - least deprived" ~ "5",
+      DEPRIVATION == "1 - most deprived" ~ "1",
+      TRUE ~ DEPRIVATION
+    )
+  )
+unique(myelomaData$DEPRIVATION)
+
+# replacing value in STATUS column [A (Alive): 0 | D (Dead): 1]
+myelomaData$STATUS[myelomaData$STATUS == "A"] <- 0
+myelomaData$STATUS[myelomaData$STATUS == "D"] <- 1
+unique(myelomaData$STATUS)
+class(myelomaData$STATUS)
+
+# replacing value in PERFORMANCE column 
+myelomaData %>%
+  count(PERFORMANCE, name = "Counts", sort = TRUE)
+myelomaData$PERFORMANCE[myelomaData$PERFORMANCE == "9"] <- NA
+unique(myelomaData$PERFORMANCE)
+myelomaData %>%
+  count(PERFORMANCE, name = "Counts", sort = TRUE)
+
+### Step 2: Massaging Variables with Missing Value ###
+# rechecking the NA's in our dataset
+colSums(is.na(myelomaData))
+summary(myelomaData)
+unique(myelomaData$ETHNIC)
+
+# checking before implement any changes for ETHNIC
+sapply(myelomaData, class)
+myelomaData %>%
+  count(ETHNIC, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for ETHNIC column
+myelomaData$ETHNIC <- as.integer(myelomaData$ETHNIC)
+
+# checking back the data type and number of unique value after changes
+sapply(myelomaData, class)
+myelomaData %>%
+  count(ETHNIC, name = "Counts", sort = TRUE)
+summary(myelomaData)
+
+# checking before changes done for STATUS column
+myelomaData %>%
+  count(STATUS, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for STATUS column
+myelomaData$STATUS <- as.integer(myelomaData$STATUS)
+
+# checking back the data type and number of unique value after changes
+class(myelomaData$STATUS)
+myelomaData %>%
+  count(STATUS, name = "Counts", sort = TRUE)
+
+# checking before changes done for DEPRIVATION column
+myelomaData %>%
+  count(DEPRIVATION, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for DEPRIVATION column
+myelomaData$DEPRIVATION <- as.integer(myelomaData$DEPRIVATION)
+
+# checking back the data type and number of unique value after changes
+class(myelomaData$DEPRIVATION)
+myelomaData %>%
+  count(DEPRIVATION, name = "Counts", sort = TRUE)
+
+# create new dataset that will be used for imputation and analysis
+myelomaDataFinal <- myelomaData[, c("GENDER",
+                                    "AGE",
+                                    "DEPRIVATION",
+                                    "PERFORMANCE",
+                                    "CCS",
+                                    "STATUS",
+                                    "TIME",
+                                    "ETHNIC")]
+View(myelomaDataFinal)
+
+# store a subset data for the impacted column with missing value for reference
+NA_ETHNICITY <- subset(myelomaDataFinal, is.na(myelomaDataFinal$ETHNIC))
+NA_PERFORMANCESTATUS <- subset(myelomaDataFinal, is.na(myelomaDataFinal$PERFORMANCE))
+NA_CCS <- subset(myelomaDataFinal, is.na(myelomaDataFinal$CCS))
+View(NA_ETHNICITY)
+View(NA_PERFORMANCESTATUS)
+View(NA_CCS)
+
+### Step 3: Missing Value Imputation ###
+# handling missing values using MICE package
+# loading MICE library
+library(mice)
+library(tidyverse)
+
+# to look at the missing values pattern
+install.packages("ggmice")
+library(ggplot2)
+library(ggmice)
+plot_pattern(myelomaDataFinal,
+             square = TRUE,
+             rotate = TRUE,
+             npat = 8)
+
+# we will be using VIM package to help visualize
+library(VIM)
+aggr_plot <- aggr(myelomaDataFinal, col=c('navyblue','red'),
+                  numbers=TRUE,
+                  sortVars=TRUE,
+                  labels=names(myelomaDataFinal),
+                  cex.axis=.6,
+                  cex.main=.6,
+                  gap=3,
+                  ylab=c("Histogram of Missing data", "Pattern"))
+
+# to check whether the dataset having MCAR
+# loading naniar library
+install.packages("naniar")
+library(naniar)
+
+# to conduct Little's test for MCAR
+summary(myelomaDataFinal)
+mcar_test(myelomaDataFinal)
+
+# to check out what regression methods we can use for our imputation
+methods(mice)
+
+# to handle our missing value using Random Forest (m = 10)
+imputed_data_rf <- mice(myelomaDataFinal, m=10, method = "rf")
+summary(imputed_data_rf)
+
+# to check the imputation value for each imputation set 
+imputed_data_rf$imp$ETHNIC
+
+# to finish our imputation process
+myelomaDataImputedRF <- complete(imputed_data_rf,1)
+
+# to check for any missing value after imputation
+sapply(myelomaDataFinal, function(x) sum(is.na(x))) #missing value before imputation
+sapply(myelomaDataImputedRF, function(x) sum(is.na(x))) #missing value after imputation
+
+# to check the summary of the new dataset after imputation
+summary(myelomaDataFinal)
+summary(myelomaDataImputedRF)
+attributes(myelomaDataImputedRF)
+
+# to save dataset as csv
+write.csv(myelomaDataFinal, "myelomaDataFinal.csv")
+write.csv(myelomaDataImputedRF, "myelomaDataImputedRF.csv")
