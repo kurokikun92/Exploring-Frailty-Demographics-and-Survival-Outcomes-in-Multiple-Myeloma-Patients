@@ -1,0 +1,92 @@
+### ANALYSIS ###
+### Step 1: Random Forest Prediction Model ###
+# install packages
+install.packages("randomForest")
+
+# load the required libraries
+library(stats)
+library(dplyr)
+library(randomForest)
+
+# create new column to reflects frailty status as number
+unique(myelomaDataImputedRF$FRAILTY_STATUS)
+myelomaDataImputedRF$FRAIL_STAT <- ifelse(myelomaDataImputedRF$FRAILTY_STATUS == "Nonfrail", 0, 1)
+View(myelomaDataImputedRF)
+
+# variable selection
+myelomaRF <- myelomaDataImputedRF[, c("GENDER",
+                                      "AGE",
+                                      "DEPRIVATION",
+                                      "STATUS",
+                                      "ETHNIC",
+                                      "FRAIL_STAT",
+                                      "TIME")]
+str(myelomaRF)
+
+# to save dataset as csv
+write.csv(myelomaRF, "myelomaRF.csv")
+
+#splitting data into training and testing dataset
+indexRF <- sample(2, nrow(myelomaRF), replace = TRUE, prob = c(0.7,0.3)) # random forest imputation method
+
+# training dataset
+TrainingRF <- myelomaRF[indexRF == 1,] # random forest imputation method
+
+# testing dataset
+TestingRF <- myelomaRF[indexRF == 2,] # random forest imputation method
+
+# random forest model
+RFM_RF <- randomForest(TIME ~GENDER + AGE + DEPRIVATION + ETHNIC + FRAIL_STAT, importance = TRUE, data = TrainingRF) # random forest imputation method 
+RFM_RF
+
+# to get variable importance scores
+varImpPlot(RFM_RF, col = "blue", pch = 19, main = "Variable Importance Plot")
+
+# evaluating model accuracy
+Time_Pred_Test <- predict(RFM_RF, TestingRF) # random forest imputation method
+TestingRF$Time_Pred_Test <- Time_Pred_Test
+Time_Pred_Train <- predict(RFM_RF, TrainingRF) # random forest imputation method
+TrainingRF$Time_Pred_Train <- Time_Pred_Train
+View(TestingRF)
+View(TrainingRF)
+
+# calculate the RMSE to measure the performance of the prediction model
+# squared error 
+squared_error_test <- (TestingRF$TIME - TestingRF$Time_Pred_Test)^2 
+squared_error_train <- (TrainingRF$TIME - TrainingRF$Time_Pred_Train)^2
+
+# Mean squared error (MSE)
+mse_test <- mean(squared_error_test)
+mse_train <- mean(squared_error_train)
+
+# Root of mean squareed error (RMSE)
+RMSE_test <- sqrt(mse_test)
+RMSE_train <- sqrt(mse_train)
+
+# Mean Absolute Error (MAE)
+abs_diff_test <- abs(TestingRF$TIME - TestingRF$Time_Pred_Test)
+mae_test <- mean(abs_diff_test)
+
+abs_diff_train <- abs(TrainingRF$TIME - TrainingRF$Time_Pred_Train)
+mae_train <- mean(abs_diff_train)
+
+print(RMSE_test)
+print(RMSE_train)
+
+print(mae_test)
+print(mae_train)
+
+RMSE_test > RMSE_train
+mae_test > mae_train
+
+# creating random forest model that using dataset that used random forest imputation by excluding
+# DEPRIVATION, GENDER and ETHNIC variable
+RFM_RF_new <- randomForest(TIME ~ AGE + FRAIL_STAT, importance = TRUE, data = TrainingRF)
+varImpPlot(RFM_RF_new)
+Time_Pred_RF_new <- predict(RFM_RF_new, TestingRF) 
+TestingRF$Time_Pred_RF_new <- Time_Pred_RF_new
+squared_error_RF_new <- (TestingRF$TIME - TestingRF$Time_Pred_RF_new)^2 
+mse_RF_new <- mean(squared_error_RF_new) 
+RMSE_RF_new <- sqrt(mse_RF_new) 
+abs_diff_RF_new <- abs(TestingRF$TIME - TestingRF$Time_Pred_RF_new)
+mae_RF_new <- mean(abs_diff_RF_new)
