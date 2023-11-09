@@ -1,0 +1,507 @@
+### DATA PREPARATION (1) ###
+### Step 1: Data Merging & Variable Selection ###
+# set working directory
+setwd("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/5. Final/Coding")
+
+# importing dataset
+patient <- read.csv("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/3. Simulacrum/simulacrum_v2.1.0/simulacrum_v2.1.0/Data/sim_av_patient.csv")
+tumour <- read.csv("C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/3. Simulacrum/simulacrum_v2.1.0/simulacrum_v2.1.0/Data/sim_av_tumour.csv")
+
+# extracting summary details for both datasets
+summary(patient)
+summary(tumour)
+
+# load library for merging process
+library(dplyr)
+
+# merge using inner_join
+combineData <- patient %>% inner_join(tumour, by = "PATIENTID", multiple = "all")
+View(combineData)
+ncol(combineData)
+nrow(combineData)
+
+# selecting only the column that going to be use for survival analysis, binary logistic regression and random forest ML
+combineDataFilter <- combineData[, c("PATIENTID", 
+                                     "GENDER.x", 
+                                     "ETHNICITY", 
+                                     "VITALSTATUS", 
+                                     "VITALSTATUSDATE", 
+                                     "DIAGNOSISDATEBEST", 
+                                     "SITE_ICD10_O2_3CHAR",
+                                     "AGE", 
+                                     "QUINTILE_2019", 
+                                     "PERFORMANCESTATUS", 
+                                     "CHRL_TOT_27_03")]
+View(combineDataFilter)
+nrow(combineDataFilter)
+
+### Step 2: Data Filtering ###
+# take in patients who are alive (A) and dead (D) only
+combineDataStatus <- subset(combineDataFilter, VITALSTATUS %in% c("A", "D"))
+View(combineDataStatus)
+nrow(combineDataStatus)
+
+# take in myeloma/multiple myeloma patients only
+myelomaData <- subset(combineDataStatus, SITE_ICD10_O2_3CHAR %in% c("C90"))
+View(myelomaData)
+nrow(myelomaData)
+
+### Step 3: Variables for KM Survival Analysis ###
+# to find the earliest and latest diagnosis date and status date
+# to convert DIAGNOSISDATEBEST and VITALSTATUSDATE to Date type
+myelomaData$VITALSTATUSDATE <- as.Date(myelomaData$VITALSTATUSDATE)
+myelomaData$DIAGNOSISDATEBEST <- as.Date(myelomaData$DIAGNOSISDATEBEST)
+
+# to filter data based on Status "Dead"
+dead_data <- myelomaData[myelomaData$VITALSTATUS == "D", ]
+alive_data <- myelomaData[myelomaData$VITALSTATUS == "A", ]
+
+# to find the latest and earliest dates for dead patient
+max(dead_data$VITALSTATUSDATE, na.rm = TRUE)
+min(dead_data$VITALSTATUSDATE, na.rm = TRUE)
+max(dead_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+min(dead_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+
+# to find the latest and earliest dates for alive patient
+max(alive_data$VITALSTATUSDATE, na.rm = TRUE)
+min(alive_data$VITALSTATUSDATE, na.rm = TRUE)
+max(alive_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+min(alive_data$DIAGNOSISDATEBEST, na.rm = TRUE)
+
+# to create new column to state the status of the patient as of the endpoint choosen is 10 November 2022
+# set the endpoint date
+endpoint_date <- as.Date("2022-11-10")
+
+# to create a new column "Status" based on the specified criteria
+myelomaData$STATUS <- ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "A", "A",
+                           ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "A", "A",
+                                  ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "D", "A",
+                                         ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "D", "D",
+                                                ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "D", "D",
+                                                       ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "A", "A", NA)
+                                                )
+                                         )
+                                  )
+                           )
+)
+
+# view the updated data frame
+View(myelomaData)
+unique(myelomaData$Status)
+
+# to create new column to state the participation period ("Time") of the patient as of the endpoint choosen is 10 November 2022
+# to create a new column "Time" based on the specified criteria
+myelomaData$TIME <- ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "A",
+                           as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                           ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "A",
+                                  as.numeric(difftime(endpoint_date, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                  ifelse(myelomaData$VITALSTATUSDATE > endpoint_date & myelomaData$VITALSTATUS == "D",
+                                         as.numeric(difftime(endpoint_date, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                         ifelse(myelomaData$VITALSTATUSDATE < endpoint_date & myelomaData$VITALSTATUS == "D",
+                                                as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "D",
+                                                       as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                       ifelse(myelomaData$VITALSTATUSDATE == endpoint_date & myelomaData$VITALSTATUS == "A",
+                                                              as.numeric(difftime(myelomaData$VITALSTATUSDATE, myelomaData$DIAGNOSISDATEBEST, units = "days")) / 365.25,
+                                                              NA
+                                                       )
+                                                )
+                                         )
+                                  )
+                           )
+)
+
+# to view the updated data frame
+View(myelomaData)
+
+# to round up the value in time column to 2 decimal places
+myelomaData$TIME <- round(myelomaData$TIME, digits = 2)
+View(myelomaData)
+
+# to save myelomaData as csv file
+write.csv(myelomaData, file = "C:/Users/User/Documents/2. Master in Data Science/3. Dissertation/5. Final/Data/01.myelomaData.csv", row.names = FALSE)
+
+### EXPLORATORY DATA ANALYSIS (EDA) ###
+# to reflect the number of missing value in each column
+colSums(is.na(myelomaData))
+
+# to calculate the number of missing values in the "ETHNICITY", "PERFORMANCESTATUS", and "CHRL_TOT_27_03"  column
+sum(is.na(myelomaData$ETHNICITY))
+myelomaData %>%
+  count(ETHNICITY, name = "Counts", sort = TRUE)
+
+sum(is.na(myelomaData$PERFORMANCESTATUS))
+myelomaData %>%
+  count(PERFORMANCESTATUS, name = "Counts", sort = TRUE)
+
+sum(is.na(myelomaData$CHRL_TOT_27_03))
+myelomaData %>%
+  count(CHRL_TOT_27_03, name = "Counts", sort = TRUE)
+
+# from Python there is missing value found in ETHNICITY column but there is none can be found in R
+# the check the unique value in ETHNICITY column
+unique(myelomaData$ETHNICITY)
+
+# from the output we found that the missing value are represented by whitespace and below code was run to properly identify the white space
+library(stringr)
+sum(is.na(myelomaData$ETHNICITY) | str_trim(myelomaData$ETHNICITY) == "")
+myelomaData$ETHNICITY[myelomaData$ETHNICITY == ""] <- NA
+summary(myelomaData)
+
+# to replace the whitespace with NA
+library(stringr)
+myelomaData$ETHNICITY <- ifelse(str_trim(myelomaData$ETHNICITY) == "", NA, myelomaData$ETHNICITY)
+myelomaData %>%
+  count(ETHNICITY, name = "Counts", sort = TRUE)
+
+### DATA CLEANING ###
+### Step 1: Standardization of Data ###
+# to rename a column using colnames() function
+colnames(myelomaData)[colnames(myelomaData) == "GENDER.x"] <- "GENDER"
+colnames(myelomaData)[colnames(myelomaData) == "QUINTILE_2019"] <- "DEPRIVATION"
+colnames(myelomaData)[colnames(myelomaData) == "PERFORMANCESTATUS"] <- "PERFORMANCE"
+colnames(myelomaData)[colnames(myelomaData) == "CHRL_TOT_27_03"] <- "CCS"
+View(myelomaData)
+
+# to check uniqueness of value for each variables
+unique(myelomaData$GENDER)
+unique(myelomaData$ETHNICITY)
+unique(myelomaData$VITALSTATUS)
+unique(myelomaData$SITE_ICD10_O2_3CHAR)
+unique(myelomaData$DEPRIVATION)
+unique(myelomaData$PERFORMANCE)
+unique(myelomaData$CCS)
+
+# to create new column to group the ethnic
+myelomaData <- myelomaData %>%
+  mutate(ETHNIC = case_when(
+    ETHNICITY %in% c("A", "B", "C", "0") ~ "1",
+    ETHNICITY %in% c("H", "J", "K") ~ "2",
+    ETHNICITY %in% c("M", "N", "P") ~ "3",
+    ETHNICITY %in% c("D", "E", "F", "G") ~ "4",
+    ETHNICITY %in% c("L", "R", "S") ~ "5",
+    ETHNICITY %in% c("X", "Z", NA) ~ NA,
+    TRUE ~ ETHNICITY  # Keep other values unchanged
+  ))
+unique(myelomaData$ETHNIC)
+
+# replacing value in DEPRIVATION column
+unique(myelomaData$DEPRIVATION)
+myelomaData <- myelomaData %>%
+  mutate(
+    DEPRIVATION = case_when(
+      DEPRIVATION == "5 - least deprived" ~ "5",
+      DEPRIVATION == "1 - most deprived" ~ "1",
+      TRUE ~ DEPRIVATION
+    )
+  )
+unique(myelomaData$DEPRIVATION)
+
+# replacing value in STATUS column [A (Alive): 0 | D (Dead): 1]
+myelomaData$STATUS[myelomaData$STATUS == "A"] <- 0
+myelomaData$STATUS[myelomaData$STATUS == "D"] <- 1
+unique(myelomaData$STATUS)
+class(myelomaData$STATUS)
+
+# replacing value in PERFORMANCE column 
+myelomaData %>%
+  count(PERFORMANCE, name = "Counts", sort = TRUE)
+myelomaData$PERFORMANCE[myelomaData$PERFORMANCE == "9"] <- NA
+unique(myelomaData$PERFORMANCE)
+myelomaData %>%
+  count(PERFORMANCE, name = "Counts", sort = TRUE)
+
+### Step 2: Massaging Variables with Missing Value ###
+# rechecking the NA's in our dataset
+colSums(is.na(myelomaData))
+summary(myelomaData)
+unique(myelomaData$ETHNIC)
+
+# checking before implement any changes for ETHNIC
+sapply(myelomaData, class)
+myelomaData %>%
+  count(ETHNIC, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for ETHNIC column
+myelomaData$ETHNIC <- as.integer(myelomaData$ETHNIC)
+
+# checking back the data type and number of unique value after changes
+sapply(myelomaData, class)
+myelomaData %>%
+  count(ETHNIC, name = "Counts", sort = TRUE)
+summary(myelomaData)
+
+# checking before changes done for STATUS column
+myelomaData %>%
+  count(STATUS, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for STATUS column
+myelomaData$STATUS <- as.integer(myelomaData$STATUS)
+
+# checking back the data type and number of unique value after changes
+class(myelomaData$STATUS)
+myelomaData %>%
+  count(STATUS, name = "Counts", sort = TRUE)
+
+# checking before changes done for DEPRIVATION column
+myelomaData %>%
+  count(DEPRIVATION, name = "Counts", sort = TRUE)
+
+# converting data type from character to integer for DEPRIVATION column
+myelomaData$DEPRIVATION <- as.integer(myelomaData$DEPRIVATION)
+
+# checking back the data type and number of unique value after changes
+class(myelomaData$DEPRIVATION)
+myelomaData %>%
+  count(DEPRIVATION, name = "Counts", sort = TRUE)
+
+# create new dataset that will be used for imputation and analysis
+myelomaDataFinal <- myelomaData[, c("GENDER",
+                                    "AGE",
+                                    "DEPRIVATION",
+                                    "PERFORMANCE",
+                                    "CCS",
+                                    "STATUS",
+                                    "TIME",
+                                    "ETHNIC")]
+View(myelomaDataFinal)
+
+# store a subset data for the impacted column with missing value for reference
+NA_ETHNICITY <- subset(myelomaDataFinal, is.na(myelomaDataFinal$ETHNIC))
+NA_PERFORMANCESTATUS <- subset(myelomaDataFinal, is.na(myelomaDataFinal$PERFORMANCE))
+NA_CCS <- subset(myelomaDataFinal, is.na(myelomaDataFinal$CCS))
+View(NA_ETHNICITY)
+View(NA_PERFORMANCESTATUS)
+View(NA_CCS)
+
+### Step 3: Missing Value Imputation ###
+# handling missing values using MICE package
+# loading MICE library
+library(mice)
+library(tidyverse)
+
+# to look at the missing values pattern
+install.packages("ggmice")
+library(ggplot2)
+library(ggmice)
+plot_pattern(myelomaDataFinal,
+             square = TRUE,
+             rotate = TRUE,
+             npat = 8)
+
+# we will be using VIM package to help visualize
+library(VIM)
+aggr_plot <- aggr(myelomaDataFinal, col=c('navyblue','red'),
+                  numbers=TRUE,
+                  sortVars=TRUE,
+                  labels=names(myelomaDataFinal),
+                  cex.axis=.6,
+                  cex.main=.6,
+                  gap=3,
+                  ylab=c("Histogram of Missing data", "Pattern"))
+
+# to check whether the dataset having MCAR
+# loading naniar library
+install.packages("naniar")
+library(naniar)
+
+# to conduct Little's test for MCAR
+summary(myelomaDataFinal)
+mcar_test(myelomaDataFinal)
+
+# to check out what regression methods we can use for our imputation
+methods(mice)
+
+# to handle our missing value using Random Forest (m = 10)
+imputed_data_rf <- mice(myelomaDataFinal, m=10, method = "rf")
+summary(imputed_data_rf)
+
+# to check the imputation value for each imputation set 
+imputed_data_rf$imp$ETHNIC
+
+# to finish our imputation process
+myelomaDataImputedRF <- complete(imputed_data_rf,1)
+
+# to check for any missing value after imputation
+sapply(myelomaDataFinal, function(x) sum(is.na(x))) #missing value before imputation
+sapply(myelomaDataImputedRF, function(x) sum(is.na(x))) #missing value after imputation
+
+# to check the summary of the new dataset after imputation
+summary(myelomaDataFinal)
+summary(myelomaDataImputedRF)
+attributes(myelomaDataImputedRF)
+
+# to save dataset as csv
+write.csv(myelomaDataFinal, "myelomaDataFinal.csv")
+write.csv(myelomaDataImputedRF, "myelomaDataImputedRF.csv")
+
+### DATA PREPARATION (2) ###
+# Frailty Score for random forest imputation
+# define scoring rule
+# score for Age
+age_score <- ifelse(myelomaDataImputedRF$AGE <= 75, 0,
+                    ifelse(myelomaDataImputedRF$AGE <= 80, 1, 2))
+
+# score for Charlson Comorbidity Index
+comorbidity_score <- ifelse(myelomaDataImputedRF$CCS <= 1, 0, 1)
+
+# score for Performance Status
+performance_score <- ifelse(myelomaDataImputedRF$PERFORMANCE == 0, 0,
+                            ifelse(myelomaDataImputedRF$PERFORMANCE == 1, 1, 2))
+
+# calculate total frailty score
+FRAILTY_SCORE <- age_score + comorbidity_score + performance_score
+
+# determine frailty status
+FRAILTY_STATUS <- ifelse(FRAILTY_SCORE >= 2, "Frail", "Nonfrail")
+
+# creating column to reflect the total frailty score
+myelomaDataImputedRF <- myelomaDataImputedRF %>%
+  mutate(FRAILTY_SCORE)
+
+# creating column to reflect the frailty status
+myelomaDataImputedRF <- myelomaDataImputedRF %>%
+  mutate(FRAILTY_STATUS)
+View(myelomaDataImputedRF)
+
+unique(myelomaDataImputedRF$PERFORMANCE)
+unique(myelomaDataImputedRF$CCS)
+unique(myelomaDataImputedRF$ETHNIC)
+
+### ANALYSIS ###
+### Step 1: Random Forest Prediction Model ###
+# install packages
+install.packages("randomForest")
+
+# load the required libraries
+library(stats)
+library(dplyr)
+library(randomForest)
+
+# create new column to reflects frailty status as number
+unique(myelomaDataImputedRF$FRAILTY_STATUS)
+myelomaDataImputedRF$FRAIL_STAT <- ifelse(myelomaDataImputedRF$FRAILTY_STATUS == "Nonfrail", 0, 1)
+View(myelomaDataImputedRF)
+
+# variable selection
+myelomaRF <- myelomaDataImputedRF[, c("GENDER",
+                                      "AGE",
+                                      "DEPRIVATION",
+                                      "STATUS",
+                                      "ETHNIC",
+                                      "FRAIL_STAT",
+                                      "TIME")]
+str(myelomaRF)
+
+# to save dataset as csv
+write.csv(myelomaRF, "myelomaRF.csv")
+
+#splitting data into training and testing dataset
+indexRF <- sample(2, nrow(myelomaRF), replace = TRUE, prob = c(0.7,0.3)) # random forest imputation method
+
+# training dataset
+TrainingRF <- myelomaRF[indexRF == 1,] # random forest imputation method
+
+# testing dataset
+TestingRF <- myelomaRF[indexRF == 2,] # random forest imputation method
+
+# random forest model
+RFM_RF <- randomForest(TIME ~GENDER + AGE + DEPRIVATION + ETHNIC + FRAIL_STAT, importance = TRUE, data = TrainingRF) # random forest imputation method 
+RFM_RF
+
+# to get variable importance scores
+varImpPlot(RFM_RF, col = "blue", pch = 19, main = "Variable Importance Plot")
+
+# evaluating model accuracy
+Time_Pred_Test <- predict(RFM_RF, TestingRF) # random forest imputation method
+TestingRF$Time_Pred_Test <- Time_Pred_Test
+Time_Pred_Train <- predict(RFM_RF, TrainingRF) # random forest imputation method
+TrainingRF$Time_Pred_Train <- Time_Pred_Train
+View(TestingRF)
+View(TrainingRF)
+
+# calculate the RMSE to measure the performance of the prediction model
+# squared error 
+squared_error_test <- (TestingRF$TIME - TestingRF$Time_Pred_Test)^2 
+squared_error_train <- (TrainingRF$TIME - TrainingRF$Time_Pred_Train)^2
+
+# Mean squared error (MSE)
+mse_test <- mean(squared_error_test)
+mse_train <- mean(squared_error_train)
+
+# Root of mean squareed error (RMSE)
+RMSE_test <- sqrt(mse_test)
+RMSE_train <- sqrt(mse_train)
+
+# Mean Absolute Error (MAE)
+abs_diff_test <- abs(TestingRF$TIME - TestingRF$Time_Pred_Test)
+mae_test <- mean(abs_diff_test)
+
+abs_diff_train <- abs(TrainingRF$TIME - TrainingRF$Time_Pred_Train)
+mae_train <- mean(abs_diff_train)
+
+print(RMSE_test)
+print(RMSE_train)
+
+print(mae_test)
+print(mae_train)
+
+RMSE_test > RMSE_train
+mae_test > mae_train
+
+# creating random forest model that using dataset that used random forest imputation by excluding
+# DEPRIVATION, GENDER and ETHNIC variable
+RFM_RF_new <- randomForest(TIME ~ AGE + FRAIL_STAT, importance = TRUE, data = TrainingRF)
+varImpPlot(RFM_RF_new)
+Time_Pred_RF_new <- predict(RFM_RF_new, TestingRF) 
+TestingRF$Time_Pred_RF_new <- Time_Pred_RF_new
+squared_error_RF_new <- (TestingRF$TIME - TestingRF$Time_Pred_RF_new)^2 
+mse_RF_new <- mean(squared_error_RF_new) 
+RMSE_RF_new <- sqrt(mse_RF_new) 
+abs_diff_RF_new <- abs(TestingRF$TIME - TestingRF$Time_Pred_RF_new)
+mae_RF_new <- mean(abs_diff_RF_new)
+
+### Step 2: Binomial Logistic Regression ###
+# RMSE & MAE < for the dataset with random forest imputation so myelomaRF dataset will be used
+View(myelomaRF)
+colnames(myelomaRF)
+binomial_model_RF <- glm(FRAIL_STAT ~ GENDER + AGE + DEPRIVATION + ETHNIC, data = myelomaRF, family = "binomial")
+summary(binomial_model_RF)
+
+### Step 3: Kaplan-Meier Survival Analysis ###
+library(survival)
+
+# fit the KM model for the data based on frailty status 
+km.model.overall <- survfit(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ 1,
+                       type = "kaplan-meier")
+ 
+# plot the overall KM survival model
+plot(km.model.overall, conf.int=F, xlab="Time (years)", 
+     ylab="% Alive = S(t)", main = "Kaplan-Meier model for Myeloma Patients", mark.time=TRUE)
+
+summary(km.model.overall)
+km.model.overall
+
+# fit the KM model for the data based on frailty status 
+km.model.RF <- survfit(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ myelomaRF$FRAIL_STAT,
+                       type = "kaplan-meier")
+
+# plot the KM survival model for frail and non-frail patient
+plot(km.model.RF, conf.int=F, xlab="Time (years)", 
+     ylab="% Alive = S(t)", main = "Kaplan-Meier model for Myeloma Patients",
+     col=c("blue", "red"), las=1, lwd=2, mark.time=TRUE)
+
+# to add legend to the plot
+legend(x= "topright", legend=c("Nonfrail", "Frail"), lty=1, lwd=2,
+       col = c("blue", "red"), bty="", cex = 0.6)
+
+summary(km.model.RF)
+km.model.RF
+
+# perform the log-rank test to identify if there is any statistical difference between frail and non frail
+logrank_test <- survdiff(Surv(myelomaRF$TIME, myelomaRF$STATUS) ~ myelomaRF$FRAIL_STAT, data = myelomaRF)
+
+# print the log-rank test results
+print(logrank_test)
+
+
